@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import re
 import sys
+from random import randint
 from scipy import stats
 import pickle
 
@@ -32,13 +33,13 @@ def load_obj(name):
 
 def save_obj(obj, name):
     with open(name, 'wb') as f:
-        pickle.dump(obj, f, pickle.
-def generate_syllable_freq_dict_from_fHIGHEST_PROTOCOL)
+        pickle.dump(obj, f)
 
 
-def generate_syllable_freq_dict_from_file():
+def generate_syllable_freq_dict_from_file(count):
     syl_count_dict = {}
-    regex_pa = r'([^i,y,e,a,o,ó,u,ą,ę]{1,3}[i,y,e,a,o,ó,u,ą,ę]{1})'
+    regex_pa = r'([^i,y,e,a,o,ó,u,ą,ę]{%d}[i,y,e,a,o,ó,u,ą,ę]{1})' % count
+    print(regex_pa)
     counter = 0
     with open(dict_filename, 'rb') as polish_words_file:
         for word in polish_words_file.readlines():
@@ -51,27 +52,82 @@ def generate_syllable_freq_dict_from_file():
     syl_count_dict.update((word, quantity / counter) for word, quantity in syl_count_dict.items())
     return syl_count_dict
 
+
 def load_syllable_freq_dict():
     if os.path.isfile(dict_pickle_filename):
         return load_obj(dict_pickle_filename)
     else:
         print("Haven't found", dict_pickle_filename, "try to generate it from", dict_filename)
         if os.path.isfile(dict_filename):
-            syllable_freq_dict = generate_syllable_freq_dict_from_file()
-            save_obj(syllable_freq_dict, dict_pickle_filename)
-            return syllable_freq_dict
+            tuples = (generate_syllable_freq_dict_from_file(1),
+                      generate_syllable_freq_dict_from_file(2),
+                      generate_syllable_freq_dict_from_file(3))
+            save_obj(tuples, dict_pickle_filename)
+            return tuples
         else:
             print("Nor", dict_filename, "found. Exiting.")
 
 
-def create_generator(syllable_freq_dict):
-    # to do - try this below
-    # stats.rv_discrete(name='custm', values=(syl_count_dict.keys(), list(syl_count_dict.values())/counter))
-    pass
+def get_syl_with_chars_count(syllable_freq_dict, count):
+    return dict((key, value) for key, value in syllable_freq_dict.items() if len(key) == count)
 
+
+def createRVSReadyDict(syllable_freq_dict):
+    dict = {}
+    item = 0
+    for (key, value) in syllable_freq_dict.items():
+        dict[item] = (key, value)
+        item += 1
+    return dict
+
+
+def create_generator(syl_count_dict):
+    probabilities = []
+
+    for (_, probability) in syl_count_dict.values():
+        probabilities.append(probability)
+
+    return stats.rv_discrete(name='custm', values=(list(syl_count_dict.keys()), probabilities))
+
+
+def generatePasswordPart(length, rvsDict, generators):
+    return rvsDict[length][generators[length].rvs(size=1)[0]][0]
+
+
+def getPartsLengthArrayForLength(length):
+    parts = []
+    while length > 0:
+        if length <= 4:
+            to_push = length
+        else:
+            to_push = randint(2, 4)
+        parts.append(to_push)
+        length -= to_push
+    return parts
 
 
 if __name__ == "__main__":
-    syllable_freq_dict = load_syllable_freq_dict()
-    create_generator(syllable_freq_dict)
-    print(syllable_freq_dict)
+    try:
+        passwordLength = int(sys.argv[1])
+    except Exception:
+        print("Length not specified using 10")
+        passwordLength = 10
+
+    tuples = load_syllable_freq_dict()
+
+    rvsReadyDict = {2: createRVSReadyDict(tuples[0]),
+                    3: createRVSReadyDict(tuples[1]),
+                    4: createRVSReadyDict(tuples[2])}
+
+    charsToRv = {2: create_generator(rvsReadyDict[2]),
+                 3: create_generator(rvsReadyDict[3]),
+                 4: create_generator(rvsReadyDict[4])}
+
+    passwordParts = getPartsLengthArrayForLength(passwordLength)
+
+    password = ""
+
+    for partLength in passwordParts:
+        password += generatePasswordPart(partLength, rvsReadyDict, charsToRv)
+
+    print(password)
